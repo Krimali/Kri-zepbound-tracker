@@ -1,6 +1,6 @@
 import "./globals.css";
 import Link from "next/link";
-import AuthGate from "@/app/components/AuthGate";
+import AuthGate from "./components/AuthGate";
 
 export const metadata = {
   title: "Zepbound Journey",
