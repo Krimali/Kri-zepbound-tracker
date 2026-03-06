@@ -1,15 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 
 type Entry = {
   id: string;
-  entry_date: string; // YYYY-MM-DD
+  entry_date: string;
   week_number: number;
-  day_in_week: number; // Tue=1 ... Mon=7
-
+  day_in_week: number;
   weight: number | null;
   steps: number | null;
   calories: number | null;
@@ -18,7 +16,6 @@ type Entry = {
   fat: number | null;
   carbs: number | null;
   mood: string | null;
-
   is_injection_day: boolean;
   dose_mg: number | null;
   injection_site: string | null;
@@ -32,7 +29,26 @@ type Exercise = {
   created_at?: string;
 };
 
-const WEEK1_START = "2025-12-30"; // Tue
+const WEEK1_START = "2025-12-30";
+
+const injectionSites = [
+  "",
+  "Left Abdomen",
+  "Right Abdomen",
+  "Left Thigh",
+  "Right Thigh",
+  "Left Arm",
+  "Right Arm",
+  "Other",
+];
+
+const exerciseOptions = [
+  "",
+  "Yoga",
+  "Resistance bands",
+  "Weight Lifting",
+  "Walking",
+];
 
 function isoToday() {
   const d = new Date();
@@ -42,19 +58,9 @@ function isoToday() {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-function asISO(d: Date) {
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-// Tue=1 ... Mon=7
 function dayInWeekFromISO(iso: string) {
   const d = new Date(iso + "T00:00:00");
-  const js = d.getDay(); // Sun=0 Mon=1 Tue=2 ... Sat=6
-  // Convert to Tue=1 ... Mon=7
-  // Tue(2)->1, Wed(3)->2, Thu(4)->3, Fri(5)->4, Sat(6)->5, Sun(0)->6, Mon(1)->7
+  const js = d.getDay();
   const map: Record<number, number> = { 2: 1, 3: 2, 4: 3, 5: 4, 6: 5, 0: 6, 1: 7 };
   return map[js];
 }
@@ -74,28 +80,50 @@ function nOrNull(v: string) {
   return Number.isFinite(num) ? num : null;
 }
 
-function round1(n: number) {
-  return Math.round(n * 10) / 10;
+function buildEmptyEntryForm() {
+  return {
+    weight: "",
+    steps: "",
+    calories: "",
+    protein: "",
+    fiber: "",
+    fat: "",
+    carbs: "",
+    mood: "",
+    isInjectionDay: false,
+    doseMg: "",
+    injectionSite: "",
+  };
 }
 
-const injectionSites = [
-  "",
-  "Left Abdomen",
-  "Right Abdomen",
-  "Left Thigh",
-  "Right Thigh",
-  "Left Arm",
-  "Right Arm",
-  "Other",
-];
-
 export default function AddEntryPage() {
-    const [userId, setUserId] = useState<string | null>(null);
-    const [sessionChecked, setSessionChecked] = useState(false);
-    const [signedIn, setSignedIn] = useState(false);
-    const [reloadTick, setReloadTick] = useState(0);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [status, setStatus] = useState<"idle" | "loading" | "saving" | "error" | "ok">("idle");
+  const [errorMsg, setErrorMsg] = useState<string>("");
 
-  // Load session once + keep it updated
+  const [date, setDate] = useState<string>(isoToday());
+  const [entryId, setEntryId] = useState<string | null>(null);
+
+  const [weight, setWeight] = useState<string>("");
+  const [steps, setSteps] = useState<string>("");
+  const [calories, setCalories] = useState<string>("");
+  const [protein, setProtein] = useState<string>("");
+  const [fiber, setFiber] = useState<string>("");
+  const [fat, setFat] = useState<string>("");
+  const [carbs, setCarbs] = useState<string>("");
+  const [mood, setMood] = useState<string>("");
+
+  const [isInjectionDay, setIsInjectionDay] = useState<boolean>(false);
+  const [doseMg, setDoseMg] = useState<string>("");
+  const [injectionSite, setInjectionSite] = useState<string>("");
+
+  const [exercises, setExercises] = useState<Exercise[]>([]);
+  const [exType, setExType] = useState<string>("");
+  const [exMinutes, setExMinutes] = useState<string>("20");
+
+  const weekNumber = useMemo(() => weekNumberFromISO(date), [date]);
+  const dayInWeek = useMemo(() => dayInWeekFromISO(date), [date]);
+
   useEffect(() => {
     let sub: any;
 
@@ -112,66 +140,27 @@ export default function AddEntryPage() {
 
     return () => sub?.unsubscribe?.();
   }, []);
-  const [status, setStatus] = useState<"idle" | "loading" | "saving" | "error" | "ok">("idle");
-  const [errorMsg, setErrorMsg] = useState<string>("");
 
-  const [date, setDate] = useState<string>(isoToday());
+  function resetEntryFields() {
+    const empty = buildEmptyEntryForm();
+    setWeight(empty.weight);
+    setSteps(empty.steps);
+    setCalories(empty.calories);
+    setProtein(empty.protein);
+    setFiber(empty.fiber);
+    setFat(empty.fat);
+    setCarbs(empty.carbs);
+    setMood(empty.mood);
+    setIsInjectionDay(empty.isInjectionDay);
+    setDoseMg(empty.doseMg);
+    setInjectionSite(empty.injectionSite);
+  }
 
-  const [entryId, setEntryId] = useState<string | null>(null);
-
-  // entry fields (form)
-  const [weight, setWeight] = useState<string>("");
-  const [steps, setSteps] = useState<string>("");
-  const [calories, setCalories] = useState<string>("");
-  const [protein, setProtein] = useState<string>("");
-  const [fiber, setFiber] = useState<string>("");
-  const [fat, setFat] = useState<string>("");
-  const [carbs, setCarbs] = useState<string>("");
-  const [mood, setMood] = useState<string>("");
-
-  const [isInjectionDay, setIsInjectionDay] = useState<boolean>(false);
-  const [doseMg, setDoseMg] = useState<string>("");
-  const [injectionSite, setInjectionSite] = useState<string>("");
-
-  // exercises for selected date
-  const [exercises, setExercises] = useState<Exercise[]>([]);
-  const [exType, setExType] = useState<string>("");
-  const [exMinutes, setExMinutes] = useState<string>("");
-
-  const weekNumber = useMemo(() => weekNumberFromISO(date), [date]);
-  const dayInWeek = useMemo(() => dayInWeekFromISO(date), [date]);
-
-  // Load entry + exercises whenever date changes
-  useEffect(() => {
-    let ignore = false;
-
-    async function init() {
-      const { data } = await supabase.auth.getSession();
-      if (ignore) return;
-
-      setSignedIn(!!data.session);
-      setSessionChecked(true);
-    }
-
-    init();
-
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSignedIn(!!session);
-      setSessionChecked(true);
-    });
-
-    return () => {
-      ignore = true;
-      sub.subscription.unsubscribe();
-    };
-  }, []);
-  
   useEffect(() => {
     async function load() {
       setStatus("loading");
       setErrorMsg("");
 
-      // Load entry by unique entry_date
       if (!userId) {
         setStatus("error");
         setErrorMsg("Please sign in first.");
@@ -192,19 +181,8 @@ export default function AddEntryPage() {
       }
 
       if (!row) {
-        // New entry (blank)
         setEntryId(null);
-        setWeight("");
-        setSteps("");
-        setCalories("");
-        setProtein("");
-        setFiber("");
-        setFat("");
-        setCarbs("");
-        setMood("");
-        setIsInjectionDay(false);
-        setDoseMg("");
-        setInjectionSite("");
+        resetEntryFields();
         setExercises([]);
         setStatus("ok");
         return;
@@ -224,7 +202,6 @@ export default function AddEntryPage() {
       setDoseMg(e.dose_mg?.toString() ?? "");
       setInjectionSite(e.injection_site ?? "");
 
-      // Load exercises by entry_id
       const { data: exRows, error: exErr } = await supabase
         .from("exercises")
         .select("*")
@@ -242,11 +219,10 @@ export default function AddEntryPage() {
       setStatus("ok");
     }
 
-    load();
+    if (userId) load();
   }, [date, userId]);
 
   async function refresh() {
-    // trigger by changing date to itself (quick hack)
     setDate((d) => d);
   }
 
@@ -255,17 +231,16 @@ export default function AddEntryPage() {
     setErrorMsg("");
 
     if (!userId) {
-  setStatus("error");
-  setErrorMsg("Please sign in first.");
-  return;
-}
+      setStatus("error");
+      setErrorMsg("Please sign in first.");
+      return;
+    }
 
     const payload = {
-      user_id: userId,              // ✅ ADD THIS
+      user_id: userId,
       entry_date: date,
       week_number: weekNumber,
       day_in_week: dayInWeek,
-
       weight: nOrNull(weight),
       steps: nOrNull(steps),
       calories: nOrNull(calories),
@@ -274,13 +249,11 @@ export default function AddEntryPage() {
       fat: nOrNull(fat),
       carbs: nOrNull(carbs),
       mood: mood.trim() ? mood.trim() : null,
-
       is_injection_day: isInjectionDay,
       dose_mg: isInjectionDay ? nOrNull(doseMg) : null,
       injection_site: isInjectionDay ? (injectionSite || null) : null,
     };
 
-    // Upsert on unique key (entry_date)
     const { data, error } = await supabase
       .from("entries")
       .upsert(payload, { onConflict: "entry_date" })
@@ -296,13 +269,6 @@ export default function AddEntryPage() {
     const saved = data as Entry;
     setEntryId(saved.id);
 
-    // If user turned off injection day, clear local fields
-    if (!isInjectionDay) {
-      setDoseMg("");
-      setInjectionSite("");
-    }
-
-    // Reload exercises (in case entry id changed from null to real)
     const { data: exRows, error: exErr } = await supabase
       .from("exercises")
       .select("*")
@@ -317,6 +283,8 @@ export default function AddEntryPage() {
     }
 
     setExercises((exRows ?? []) as Exercise[]);
+    resetEntryFields();
+    setDate(isoToday());
     setStatus("ok");
   }
 
@@ -329,35 +297,34 @@ export default function AddEntryPage() {
     setStatus("saving");
     setErrorMsg("");
 
-    // delete exercises first (FK-safe even if you don’t have FK constraints)
-    const { error: exErr } = await supabase.from("exercises").delete().eq("user_id", userId).eq("entry_id", entryId);
+    const { error: exErr } = await supabase
+      .from("exercises")
+      .delete()
+      .eq("user_id", userId)
+      .eq("entry_id", entryId);
+
     if (exErr) {
       setStatus("error");
       setErrorMsg(exErr.message);
       return;
     }
 
-    const { error } = await supabase.from("entries").delete().eq("user_id", userId).eq("id", entryId);
+    const { error } = await supabase
+      .from("entries")
+      .delete()
+      .eq("user_id", userId)
+      .eq("id", entryId);
+
     if (error) {
       setStatus("error");
       setErrorMsg(error.message);
       return;
     }
 
-    // reset to blank
     setEntryId(null);
-    setWeight("");
-    setSteps("");
-    setCalories("");
-    setProtein("");
-    setFiber("");
-    setFat("");
-    setCarbs("");
-    setMood("");
-    setIsInjectionDay(false);
-    setDoseMg("");
-    setInjectionSite("");
+    resetEntryFields();
     setExercises([]);
+    setDate(isoToday());
     setStatus("ok");
   }
 
@@ -366,11 +333,12 @@ export default function AddEntryPage() {
       alert("Please sign in first.");
       return;
     }
-    
+
     if (!entryId) {
-      alert("Save the entry first (so it has an ID), then add exercises.");
+      alert("Save the entry first, then add exercises.");
       return;
     }
+
     const t = exType.trim();
     if (!t) return;
 
@@ -396,7 +364,7 @@ export default function AddEntryPage() {
 
     setExercises((prev) => [data as Exercise, ...prev]);
     setExType("");
-    setExMinutes("");
+    setExMinutes("20");
     setStatus("ok");
   }
 
@@ -407,7 +375,12 @@ export default function AddEntryPage() {
     setStatus("saving");
     setErrorMsg("");
 
-    const { error } = await supabase.from("exercises").delete().eq("user_id", userId).eq("id", exId);
+    const { error } = await supabase
+      .from("exercises")
+      .delete()
+      .eq("user_id", userId)
+      .eq("id", exId);
+
     if (error) {
       setStatus("error");
       setErrorMsg(error.message);
@@ -419,35 +392,55 @@ export default function AddEntryPage() {
   }
 
   return (
-
-    <div style={{ padding: 28, maxWidth: 1100, margin: "0 auto" }}>
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-        <div>
-          <div style={{ fontSize: 28, fontWeight: 900 }}>Add / Edit Entry</div>
-          <div style={{ opacity: 0.7, marginTop: 4 }}>Pick a date, then save, edit, or delete.</div>
+    <div style={{ padding: "12px 12px 28px", maxWidth: 1100, margin: "0 auto" }}>
+      <div>
+        <div style={{ fontSize: 28, fontWeight: 900 }}>Add / Edit Entry</div>
+        <div style={{ opacity: 0.72, marginTop: 2, fontSize: 14 }}>
+          Pick a date, then save, edit, or delete.
         </div>
       </div>
 
-      <div style={{ height: 12 }} />
+      <div style={{ height: 10 }} />
 
-      {/* Status */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <div style={{ fontWeight: 800 }}>
-          {status === "loading" || status === "saving" ? "⏳ Working..." : status === "ok" ? "✅ Ready" : status === "error" ? "❌ Error" : ""}
+          {status === "loading" || status === "saving"
+            ? "⏳ Working..."
+            : status === "ok"
+            ? "✅ Ready"
+            : status === "error"
+            ? "❌ Error"
+            : ""}
         </div>
+
         {status === "error" ? <div style={{ color: "#b91c1c" }}>{errorMsg}</div> : null}
+
         <button onClick={refresh} style={ghostBtn}>
           Refresh
         </button>
       </div>
 
-      <div style={{ height: 16 }} />
+      <div style={{ height: 12 }} />
 
       {/* Entry Form */}
       <div style={card}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            gap: 12,
+            flexWrap: "wrap",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              gap: 10,
+              alignItems: "stretch",
+              flexWrap: "wrap",
+            }}
+          >
             <div>
               <div style={label}>Date</div>
               <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={input} />
@@ -464,25 +457,38 @@ export default function AddEntryPage() {
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: 10 }}>
-            <button onClick={saveEntry} style={primaryBtn} disabled={status === "saving" || status === "loading"}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button
+              onClick={saveEntry}
+              style={primaryBtn}
+              disabled={status === "saving" || status === "loading"}
+            >
               Save
             </button>
-            <button onClick={deleteEntry} style={dangerBtn} disabled={!entryId || status === "saving" || status === "loading"}>
+            <button
+              onClick={deleteEntry}
+              style={dangerBtn}
+              disabled={!entryId || status === "saving" || status === "loading"}
+            >
               Delete
             </button>
           </div>
         </div>
 
-        <div style={{ height: 14 }} />
+        <div style={{ height: 12 }} />
 
-        <div style={grid4}>
+        <div style={responsiveGrid}>
           <Field labelTxt="Weight (lbs)" value={weight} setValue={setWeight} />
           <Field labelTxt="Steps" value={steps} setValue={setSteps} />
           <Field labelTxt="Calories" value={calories} setValue={setCalories} />
           <div>
             <div style={label}>Mood</div>
-            <input value={mood} onChange={(e) => setMood(e.target.value)} style={input} placeholder="good / ok / etc" />
+            <input
+              value={mood}
+              onChange={(e) => setMood(e.target.value)}
+              style={input}
+              placeholder="good / ok / etc"
+            />
           </div>
 
           <Field labelTxt="Protein (g)" value={protein} setValue={setProtein} />
@@ -491,61 +497,120 @@ export default function AddEntryPage() {
           <Field labelTxt="Carbs (g)" value={carbs} setValue={setCarbs} />
         </div>
 
-        <div style={{ height: 12 }} />
+        <div style={{ height: 10 }} />
 
-        <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
-          <label style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 700 }}>
-            <input type="checkbox" checked={isInjectionDay} onChange={(e) => setIsInjectionDay(e.target.checked)} />
-            Injection day
-          </label>
-
-          <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", opacity: isInjectionDay ? 1 : 0.5 }}>
-            <div>
-              <div style={label}>Dose (mg)</div>
+        <div
+          style={{
+            border: "1px solid #eef2f7",
+            borderRadius: 16,
+            padding: 12,
+            background: "#fafafa",
+          }}
+        >
+          <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
+            <label style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 800 }}>
               <input
-                value={doseMg}
-                onChange={(e) => setDoseMg(e.target.value)}
-                style={input}
-                placeholder="e.g., 5"
-                disabled={!isInjectionDay}
+                type="checkbox"
+                checked={isInjectionDay}
+                onChange={(e) => setIsInjectionDay(e.target.checked)}
               />
-            </div>
+              Injection day
+            </label>
 
-            <div>
-              <div style={label}>Injection site</div>
-              <select value={injectionSite} onChange={(e) => setInjectionSite(e.target.value)} style={input} disabled={!isInjectionDay}>
-                {injectionSites.map((s) => (
-                  <option key={s || "__"} value={s}>
-                    {s || "—"}
-                  </option>
-                ))}
-              </select>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                gap: 10,
+                flex: 1,
+                minWidth: 260,
+                opacity: isInjectionDay ? 1 : 0.5,
+              }}
+            >
+              <div>
+                <div style={label}>Dose (mg)</div>
+                <input
+                  value={doseMg}
+                  onChange={(e) => setDoseMg(e.target.value)}
+                  style={input}
+                  placeholder="e.g. 5"
+                  disabled={!isInjectionDay}
+                />
+              </div>
+
+              <div>
+                <div style={label}>Injection site</div>
+                <select
+                  value={injectionSite}
+                  onChange={(e) => setInjectionSite(e.target.value)}
+                  style={input}
+                  disabled={!isInjectionDay}
+                >
+                  {injectionSites.map((s) => (
+                    <option key={s || "__"} value={s}>
+                      {s || "—"}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      <div style={{ height: 16 }} />
+      <div style={{ height: 12 }} />
 
       {/* Exercises */}
       <div style={card}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "baseline",
+            gap: 12,
+            flexWrap: "wrap",
+          }}
+        >
           <div style={{ fontSize: 18, fontWeight: 900 }}>Exercises (for this date)</div>
-          <div style={{ opacity: 0.7 }}>{exercises.length} logged</div>
+          <div style={{ opacity: 0.7, fontWeight: 700 }}>{exercises.length} logged</div>
         </div>
 
-        <div style={{ height: 12 }} />
+        <div style={{ height: 10 }} />
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 140px 120px", gap: 12, alignItems: "end" }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(200px, 1fr) 140px 110px",
+            gap: 10,
+            alignItems: "end",
+          }}
+        >
           <div>
             <div style={label}>Type</div>
-            <input value={exType} onChange={(e) => setExType(e.target.value)} style={input} placeholder="Yoga / Resistance Bands / Walking..." />
+            <select value={exType} onChange={(e) => setExType(e.target.value)} style={input}>
+              {exerciseOptions.map((option) => (
+                <option key={option || "__"} value={option}>
+                  {option || "Select exercise"}
+                </option>
+              ))}
+            </select>
           </div>
+
           <div>
             <div style={label}>Minutes</div>
-            <input value={exMinutes} onChange={(e) => setExMinutes(e.target.value)} style={input} placeholder="20" />
+            <input
+              value={exMinutes}
+              onChange={(e) => setExMinutes(e.target.value)}
+              style={input}
+              placeholder="20"
+            />
           </div>
-          <button onClick={addExercise} style={ghostBtn} disabled={status === "saving" || status === "loading"}>
+
+          <button
+            onClick={addExercise}
+            style={ghostBtn}
+            disabled={status === "saving" || status === "loading"}
+          >
             + Add
           </button>
         </div>
@@ -554,13 +619,29 @@ export default function AddEntryPage() {
 
         {entryId ? (
           exercises.length ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ display: "grid", gap: 10 }}>
               {exercises.map((ex) => (
-                <div key={ex.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "10px 12px", border: "1px solid #eee", borderRadius: 14 }}>
-                  <div style={{ display: "flex", gap: 10, alignItems: "baseline" }}>
+                <div
+                  key={ex.id}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: 12,
+                    padding: "12px 14px",
+                    border: "1px solid #eef2f7",
+                    borderRadius: 14,
+                    background: "#fafafa",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
                     <div style={{ fontWeight: 900 }}>{ex.exercise_type}</div>
-                    <div style={{ opacity: 0.7 }}>{ex.minutes != null ? `${ex.minutes} min` : ""}</div>
+                    <div style={{ opacity: 0.7, fontWeight: 700 }}>
+                      {ex.minutes != null ? `${ex.minutes} min` : ""}
+                    </div>
                   </div>
+
                   <button onClick={() => deleteExercise(ex.id)} style={tinyDangerBtn}>
                     Delete
                   </button>
@@ -578,7 +659,15 @@ export default function AddEntryPage() {
   );
 }
 
-function Field({ labelTxt, value, setValue }: { labelTxt: string; value: string; setValue: (v: string) => void }) {
+function Field({
+  labelTxt,
+  value,
+  setValue,
+}: {
+  labelTxt: string;
+  value: string;
+  setValue: (v: string) => void;
+}) {
   return (
     <div>
       <div style={label}>{labelTxt}</div>
@@ -589,15 +678,16 @@ function Field({ labelTxt, value, setValue }: { labelTxt: string; value: string;
 
 const card: React.CSSProperties = {
   border: "1px solid #eee",
-  borderRadius: 20,
-  padding: 18,
+  borderRadius: 18,
+  padding: 16,
   background: "white",
+  boxShadow: "0 1px 2px rgba(0,0,0,0.03)",
 };
 
-const grid4: React.CSSProperties = {
+const responsiveGrid: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-  gap: 12,
+  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+  gap: 10,
 };
 
 const label: React.CSSProperties = {
@@ -609,26 +699,36 @@ const label: React.CSSProperties = {
 
 const input: React.CSSProperties = {
   width: "100%",
-  padding: "10px 12px",
+  padding: "11px 12px",
   border: "1px solid #d9d9d9",
   borderRadius: 12,
   outline: "none",
+  background: "white",
 };
 
 const miniBox: React.CSSProperties = {
   border: "1px solid #eee",
   borderRadius: 14,
   padding: "10px 12px",
-  minWidth: 90,
+  minWidth: 88,
+  background: "#fafafa",
 };
 
-const miniLabel: React.CSSProperties = { fontSize: 12, opacity: 0.7, fontWeight: 700 };
-const miniValue: React.CSSProperties = { fontSize: 18, fontWeight: 900 };
+const miniLabel: React.CSSProperties = {
+  fontSize: 12,
+  opacity: 0.7,
+  fontWeight: 700,
+};
+
+const miniValue: React.CSSProperties = {
+  fontSize: 18,
+  fontWeight: 900,
+};
 
 const primaryBtn: React.CSSProperties = {
   border: "none",
   borderRadius: 999,
-  padding: "10px 14px",
+  padding: "10px 16px",
   fontWeight: 900,
   color: "white",
   background: "linear-gradient(90deg, #2563eb, #7c3aed)",
@@ -638,7 +738,7 @@ const primaryBtn: React.CSSProperties = {
 const dangerBtn: React.CSSProperties = {
   border: "1px solid #fecaca",
   borderRadius: 999,
-  padding: "10px 14px",
+  padding: "10px 16px",
   fontWeight: 900,
   color: "#991b1b",
   background: "#fff",
@@ -662,14 +762,4 @@ const tinyDangerBtn: React.CSSProperties = {
   color: "#991b1b",
   background: "#fff",
   cursor: "pointer",
-};
-
-const pillBtn: React.CSSProperties = {
-  border: "1px solid #e5e7eb",
-  borderRadius: 999,
-  padding: "8px 12px",
-  fontWeight: 900,
-  textDecoration: "none",
-  color: "inherit",
-  background: "#fff",
 };

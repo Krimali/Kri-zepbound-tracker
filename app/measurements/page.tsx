@@ -21,19 +21,19 @@ type MeasurementRow = {
   r_calf: number | null;
 };
 
-const FIELDS: { key: keyof MeasurementRow; label: string; hint?: string }[] = [
+const FIELDS: { key: keyof MeasurementRow; label: string }[] = [
   { key: "neck", label: "Neck" },
   { key: "shoulder", label: "Shoulder" },
   { key: "chest", label: "Chest" },
   { key: "waist", label: "Waist" },
   { key: "abdomen", label: "Abdomen" },
   { key: "hip", label: "Hip" },
-  { key: "l_bicep", label: "Left Bicep", hint: "l_bicep" },
-  { key: "r_bicep", label: "Right Bicep", hint: "r_bicep" },
-  { key: "l_thigh", label: "Left Thigh", hint: "l_thigh" },
-  { key: "r_thigh", label: "Right Thigh", hint: "r_thigh" },
-  { key: "l_calf", label: "Left Calf", hint: "l_calf" },
-  { key: "r_calf", label: "Right Calf", hint: "r_calf" },
+  { key: "l_bicep", label: "Left Bicep" },
+  { key: "r_bicep", label: "Right Bicep" },
+  { key: "l_thigh", label: "Left Thigh" },
+  { key: "r_thigh", label: "Right Thigh" },
+  { key: "l_calf", label: "Left Calf" },
+  { key: "r_calf", label: "Right Calf" },
 ];
 
 function isoToday() {
@@ -45,9 +45,12 @@ function isoToday() {
 }
 
 function fmtDateLong(iso: string) {
-  // 2026-03-04 -> Mar 4, 2026
   const d = new Date(iso + "T00:00:00");
-  return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  return d.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
 }
 
 function toNumOrNull(v: string): number | null {
@@ -58,9 +61,9 @@ function toNumOrNull(v: string): number | null {
 }
 
 function deltaColor(delta: number | null) {
-  if (delta == null) return "#6b7280"; // gray-500
-  if (delta < 0) return "#047857"; // emerald-700 (good = smaller)
-  if (delta > 0) return "#b45309"; // amber-700
+  if (delta == null) return "#6b7280";
+  if (delta < 0) return "#047857";
+  if (delta > 0) return "#b45309";
   return "#6b7280";
 }
 
@@ -70,19 +73,19 @@ function deltaText(delta: number | null) {
   return String(delta);
 }
 
+function buildEmptyForm() {
+  const init: Record<string, string> = {};
+  for (const f of FIELDS) init[f.key as string] = "";
+  return init;
+}
+
 export default function MeasurementsPage() {
   const [status, setStatus] = useState<string>("Loading...");
   const [saving, setSaving] = useState(false);
-
   const [rows, setRows] = useState<MeasurementRow[]>([]);
   const [selectedDate, setSelectedDate] = useState<string>(isoToday());
 
-  // form state: store as strings for inputs
-  const [form, setForm] = useState<Record<string, string>>(() => {
-    const init: Record<string, string> = {};
-    for (const f of FIELDS) init[f.key as string] = "";
-    return init;
-  });
+  const [form, setForm] = useState<Record<string, string>>(buildEmptyForm);
 
   async function loadAll() {
     try {
@@ -103,23 +106,32 @@ export default function MeasurementsPage() {
 
   useEffect(() => {
     loadAll();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // When date changes OR rows reload, populate form from existing row (if any)
   useEffect(() => {
     const existing = rows.find((r) => r.measure_date === selectedDate);
+    if (!existing) {
+      setForm(buildEmptyForm());
+      return;
+    }
+
     const next: Record<string, string> = {};
     for (const f of FIELDS) {
-      const v = existing ? (existing[f.key] as any) : null;
+      const v = existing[f.key] as number | null;
       next[f.key as string] = v == null ? "" : String(v);
     }
     setForm(next);
   }, [selectedDate, rows]);
 
-  // Pick 5 columns total: latest 4 + oldest 1 (unique dates)
+  const selectedExisting = useMemo(
+    () => rows.find((r) => r.measure_date === selectedDate) ?? null,
+    [rows, selectedDate]
+  );
+
   const displayed = useMemo(() => {
-    const sorted = [...rows].sort((a, b) => b.measure_date.localeCompare(a.measure_date)); // latest first
+    const sorted = [...rows].sort((a, b) =>
+      b.measure_date.localeCompare(a.measure_date)
+    );
     if (sorted.length === 0) return [];
 
     const newest = sorted.slice(0, 4);
@@ -129,23 +141,21 @@ export default function MeasurementsPage() {
     for (const r of newest) map.set(r.measure_date, r);
     map.set(oldest.measure_date, oldest);
 
-    const out = Array.from(map.values()).sort((a, b) => b.measure_date.localeCompare(a.measure_date));
-    return out;
+    return Array.from(map.values()).sort((a, b) =>
+      b.measure_date.localeCompare(a.measure_date)
+    );
   }, [rows]);
 
-  // For each displayed date, compare to the next column to the right (older)
   const displayedWithOlder = useMemo(() => {
-    const cols = displayed;
-    return cols.map((r, i) => ({
-      row: r,
-      older: i + 1 < cols.length ? cols[i + 1] : null,
+    return displayed.map((row, i) => ({
+      row,
+      older: i + 1 < displayed.length ? displayed[i + 1] : null,
     }));
   }, [displayed]);
 
   async function save() {
     setSaving(true);
     try {
-      // Build payload
       const payload: any = { measure_date: selectedDate };
       for (const f of FIELDS) {
         payload[f.key] = toNumOrNull(form[f.key as string] ?? "");
@@ -158,6 +168,8 @@ export default function MeasurementsPage() {
       if (error) throw error;
 
       await loadAll();
+      setForm(buildEmptyForm());
+      setSelectedDate(isoToday());
       setStatus("✅ Saved");
     } catch (e: any) {
       console.error(e);
@@ -167,122 +179,189 @@ export default function MeasurementsPage() {
     }
   }
 
-  return (
-    <div style={{ maxWidth: 1100, margin: "0 auto", padding: "28px 20px" }}>
-      {/* Top header (single set of nav — no duplicates) */}
-      
-      <div style={{ height: 18 }} />
+  async function deleteRow() {
+    if (!selectedExisting) {
+      setStatus("No record for selected date.");
+      return;
+    }
 
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <div style={{ fontSize: 22, fontWeight: 900 }}>Measurements</div>
-        <div style={{ opacity: 0.7, fontSize: 14 }}>Track weekly measurements (cm). Latest shown first.</div>
+    const ok = confirm(`Delete measurement for ${selectedDate}?`);
+    if (!ok) return;
+
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from("measurements")
+        .delete()
+        .eq("measure_date", selectedDate);
+
+      if (error) throw error;
+
+      await loadAll();
+      setForm(buildEmptyForm());
+      setSelectedDate(isoToday());
+      setStatus("✅ Deleted");
+    } catch (e: any) {
+      console.error(e);
+      setStatus(`❌ ${e?.message ?? "Delete failed"}`);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div style={{ maxWidth: 1100, margin: "0 auto", padding: "12px 12px 28px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+        <div style={{ fontSize: 28, fontWeight: 900 }}>Measurements</div>
+        <div style={{ opacity: 0.7, fontSize: 14 }}>
+          Track weekly measurements (cm). Latest shown first.
+        </div>
       </div>
 
-      <div style={{ marginTop: 10, marginBottom: 14, fontWeight: 700 }}>{status}</div>
+      <div style={{ marginBottom: 12, fontWeight: 800 }}>{status}</div>
 
-      {/* Add/Edit box (fixed formatting) */}
+      {/* Add / Edit */}
       <div
         style={{
           border: "1px solid #e5e7eb",
-          borderRadius: 20,
-          padding: 18,
+          borderRadius: 18,
+          padding: 16,
           background: "white",
         }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
-          <div style={{ fontSize: 16, fontWeight: 900 }}>Add / Edit</div>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 14,
+            alignItems: "center",
+            flexWrap: "wrap",
+            marginBottom: 12,
+          }}
+        >
+          <div style={{ fontSize: 18, fontWeight: 900 }}>Add / Edit</div>
 
-          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              alignItems: "center",
+              flexWrap: "wrap",
+            }}
+          >
             <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 800 }}>Date</div>
+
             <input
               type="date"
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
-              style={{
-                border: "1px solid #e5e7eb",
-                borderRadius: 12,
-                padding: "10px 12px",
-                fontWeight: 800,
-              }}
+              style={dateInputStyle}
             />
+
             <button
               onClick={save}
               disabled={saving}
               style={{
-                padding: "10px 14px",
-                borderRadius: 12,
-                border: "none",
-                color: "white",
-                fontWeight: 900,
-                cursor: saving ? "not-allowed" : "pointer",
+                ...primaryBtnStyle,
                 opacity: saving ? 0.7 : 1,
-                background: "linear-gradient(90deg, #111827, #111827)",
+                cursor: saving ? "not-allowed" : "pointer",
               }}
             >
-              {saving ? "Saving..." : "Save changes"}
+              {saving ? "Saving..." : "Save"}
+            </button>
+
+            <button
+              onClick={deleteRow}
+              disabled={!selectedExisting || saving}
+              style={{
+                ...dangerBtnStyle,
+                opacity: !selectedExisting || saving ? 0.5 : 1,
+                cursor: !selectedExisting || saving ? "not-allowed" : "pointer",
+              }}
+            >
+              Delete
             </button>
           </div>
         </div>
 
-        <div style={{ height: 14 }} />
-
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-            gap: 12,
+            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+            gap: 10,
           }}
         >
           {FIELDS.map((f) => (
             <div key={f.key as string}>
-              <div style={{ fontSize: 12, fontWeight: 900, opacity: 0.75, marginBottom: 6 }}>{f.label}</div>
+              <div style={{ fontSize: 12, fontWeight: 800, opacity: 0.75, marginBottom: 6 }}>
+                {f.label}
+              </div>
               <input
                 inputMode="decimal"
                 placeholder="—"
                 value={form[f.key as string] ?? ""}
-                onChange={(e) => setForm((prev) => ({ ...prev, [f.key as string]: e.target.value }))}
-                style={{
-                  width: "100%",
-                  border: "1px solid #e5e7eb",
-                  borderRadius: 12,
-                  padding: "10px 12px",
-                  fontWeight: 800,
-                }}
+                onChange={(e) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    [f.key as string]: e.target.value,
+                  }))
+                }
+                style={fieldInputStyle}
               />
             </div>
           ))}
         </div>
 
         <div style={{ marginTop: 10, opacity: 0.65, fontSize: 12 }}>
-          Tip: pick a date above. If a measurement exists for that date, it will auto-fill for editing.
+          Pick a date to edit an existing record. After save/delete, the form resets.
         </div>
       </div>
 
-      <div style={{ height: 16 }} />
+      <div style={{ height: 14 }} />
 
-      {/* Pivot table */}
+      {/* All measurements */}
       <div
         style={{
           border: "1px solid #e5e7eb",
-          borderRadius: 20,
-          padding: 18,
+          borderRadius: 18,
+          padding: 16,
           background: "white",
         }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-          <div style={{ fontSize: 16, fontWeight: 900 }}>All Measurements</div>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 12,
+            flexWrap: "wrap",
+            marginBottom: 8,
+          }}
+        >
+          <div style={{ fontSize: 18, fontWeight: 900 }}>All Measurements</div>
           <div style={{ fontSize: 12, opacity: 0.7 }}>
-            Showing latest 4 dates + oldest 1 date. Δ compares each date to the next column (older) on the right.
+            Latest 4 dates + oldest 1 date. Δ compares to the next older date on the right.
           </div>
         </div>
 
-        <div style={{ height: 10 }} />
-
         {displayedWithOlder.length === 0 ? (
-          <div style={{ padding: 14, opacity: 0.7 }}>No measurements yet.</div>
+          <div style={{ padding: "10px 0", opacity: 0.7 }}>No measurements yet.</div>
         ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, minWidth: 860 }}>
+          <div
+            style={{
+              overflowX: "auto",
+              border: "1px solid #eef2f7",
+              borderRadius: 16,
+            }}
+          >
+            <table
+              style={{
+                width: "100%",
+                borderCollapse: "separate",
+                borderSpacing: 0,
+                minWidth: 860,
+                background: "white",
+              }}
+            >
               <thead>
                 <tr>
                   <th
@@ -291,10 +370,10 @@ export default function MeasurementsPage() {
                       padding: "10px 10px",
                       fontSize: 12,
                       opacity: 0.75,
-                      borderBottom: "1px solid #f1f5f9",
+                      borderBottom: "1px solid #eef2f7",
+                      background: "white",
                       position: "sticky",
                       left: 0,
-                      background: "white",
                       zIndex: 2,
                     }}
                   >
@@ -307,16 +386,15 @@ export default function MeasurementsPage() {
                       colSpan={2}
                       style={{
                         textAlign: "center",
-                        padding: "10px 10px",
-                        fontSize: 12,
+                        padding: "12px 10px",
+                        fontSize: 13,
                         fontWeight: 900,
-                        borderBottom: "1px solid #f1f5f9",
+                        borderBottom: "1px solid #eef2f7",
                         background: "white",
-                        borderLeft: idx === 0 ? "none" : "1px solid #e5e7eb", // subtle vertical divider between date groups
+                        borderLeft: idx === 0 ? "none" : "1px solid #e5e7eb",
                       }}
                     >
-                      {col.row.measure_date}
-                      <div style={{ fontSize: 11, opacity: 0.65, fontWeight: 800 }}>{fmtDateLong(col.row.measure_date)}</div>
+                      {fmtDateLong(col.row.measure_date)}
                     </th>
                   ))}
                 </tr>
@@ -327,11 +405,11 @@ export default function MeasurementsPage() {
                       textAlign: "left",
                       padding: "8px 10px",
                       fontSize: 11,
-                      opacity: 0.6,
-                      borderBottom: "1px solid #f1f5f9",
+                      opacity: 0.55,
+                      borderBottom: "1px solid #eef2f7",
+                      background: "white",
                       position: "sticky",
                       left: 0,
-                      background: "white",
                       zIndex: 2,
                     }}
                   />
@@ -342,8 +420,8 @@ export default function MeasurementsPage() {
                           textAlign: "right",
                           padding: "8px 10px",
                           fontSize: 11,
-                          opacity: 0.6,
-                          borderBottom: "1px solid #f1f5f9",
+                          opacity: 0.55,
+                          borderBottom: "1px solid #eef2f7",
                           background: "white",
                           borderLeft: idx === 0 ? "none" : "1px solid #e5e7eb",
                         }}
@@ -355,8 +433,8 @@ export default function MeasurementsPage() {
                           textAlign: "right",
                           padding: "8px 10px",
                           fontSize: 11,
-                          opacity: 0.6,
-                          borderBottom: "1px solid #f1f5f9",
+                          opacity: 0.55,
+                          borderBottom: "1px solid #eef2f7",
                           background: "white",
                         }}
                       >
@@ -369,26 +447,30 @@ export default function MeasurementsPage() {
 
               <tbody>
                 {FIELDS.map((f) => (
-                  <tr key={f.key as string} style={{ borderBottom: "1px solid #f8fafc" }}>
+                  <tr key={f.key as string}>
                     <td
                       style={{
                         padding: "12px 10px",
-                        borderBottom: "1px solid #f8fafc",
+                        borderBottom: "1px solid #f3f4f6",
+                        background: "white",
                         position: "sticky",
                         left: 0,
-                        background: "white",
                         zIndex: 1,
                         minWidth: 180,
+                        fontWeight: 900,
+                        color: "#111827",
                       }}
                     >
-                      <div style={{ fontWeight: 900 }}>{f.label}</div>
-                      <div style={{ fontSize: 11, opacity: 0.55 }}>{f.hint ?? String(f.key)}</div>
+                      {f.label}
                     </td>
 
                     {displayedWithOlder.map((col, idx) => {
                       const val = col.row[f.key] as number | null;
                       const olderVal = col.older ? ((col.older[f.key] as any) as number | null) : null;
-                      const delta = val != null && olderVal != null ? Math.round((val - olderVal) * 10) / 10 : null;
+                      const delta =
+                        val != null && olderVal != null
+                          ? Math.round((val - olderVal) * 10) / 10
+                          : null;
 
                       return (
                         <FragmentKey key={`${col.row.measure_date}-${String(f.key)}`}>
@@ -396,9 +478,9 @@ export default function MeasurementsPage() {
                             style={{
                               textAlign: "right",
                               padding: "12px 10px",
-                              borderBottom: "1px solid #f8fafc",
+                              borderBottom: "1px solid #f3f4f6",
                               fontWeight: 900,
-                              borderLeft: idx === 0 ? "none" : "1px solid #e5e7eb", // subtle divider between dates
+                              borderLeft: idx === 0 ? "none" : "1px solid #e5e7eb",
                               whiteSpace: "nowrap",
                             }}
                           >
@@ -408,7 +490,7 @@ export default function MeasurementsPage() {
                             style={{
                               textAlign: "right",
                               padding: "12px 10px",
-                              borderBottom: "1px solid #f8fafc",
+                              borderBottom: "1px solid #f3f4f6",
                               fontWeight: 900,
                               color: deltaColor(delta),
                               whiteSpace: "nowrap",
@@ -427,37 +509,46 @@ export default function MeasurementsPage() {
         )}
 
         <div style={{ marginTop: 10, fontSize: 12, opacity: 0.65 }}>
-          Note: for measurements, negative Δ is usually “good” (smaller). That’s why negatives are green.
+          Negative Δ is usually “good” for body measurements, so negatives are shown in green.
         </div>
       </div>
-
-      <div style={{ height: 22 }} />
     </div>
   );
 }
 
-/**
- * Simple helper so we can return multiple <th>/<td> with a single key.
- * (JSX.Fragment doesn't accept key when returned as a component unless we wrap it.)
- */
 function FragmentKey({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-function NavLink({ href, label, active }: { href: string; label: string; active?: boolean }) {
-  return (
-    <Link
-      href={href}
-      style={{
-        textDecoration: "none",
-        fontWeight: 900,
-        color: active ? "#111827" : "#374151",
-        opacity: active ? 1 : 0.85,
-        borderBottom: active ? "2px solid #7c3aed" : "2px solid transparent",
-        paddingBottom: 8,
-      }}
-    >
-      {label}
-    </Link>
-  );
-}
+const dateInputStyle: React.CSSProperties = {
+  border: "1px solid #e5e7eb",
+  borderRadius: 12,
+  padding: "10px 12px",
+  fontWeight: 800,
+};
+
+const fieldInputStyle: React.CSSProperties = {
+  width: "100%",
+  border: "1px solid #e5e7eb",
+  borderRadius: 12,
+  padding: "10px 12px",
+  fontWeight: 800,
+};
+
+const primaryBtnStyle: React.CSSProperties = {
+  padding: "10px 14px",
+  borderRadius: 12,
+  border: "none",
+  color: "white",
+  fontWeight: 900,
+  background: "#111827",
+};
+
+const dangerBtnStyle: React.CSSProperties = {
+  padding: "10px 14px",
+  borderRadius: 12,
+  border: "1px solid #fecaca",
+  color: "#991b1b",
+  fontWeight: 900,
+  background: "#fff",
+};
