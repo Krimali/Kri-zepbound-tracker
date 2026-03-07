@@ -680,7 +680,7 @@ export default function Dashboard() {
                 <th style={{ padding: "10px 8px" }}>Dose</th>
                 <th style={{ padding: "10px 8px" }}>Start</th>
                 <th style={{ padding: "10px 8px" }}>End</th>
-                <th style={{ padding: "10px 8px" }}>WoW</th>
+                <th style={{ padding: "10px 8px" }}>Weekly Δ</th>
                 <th style={{ padding: "10px 8px" }}>Total</th>
               </tr>
             </thead>
@@ -689,9 +689,12 @@ export default function Dashboard() {
               {weeklyOverview.map((w) => {
                 const isOpen = expandedWeek === w.week;
 
+                const currentIndex = weeklyOverview.findIndex((x) => x.week === w.week);
+                const prevWeek = currentIndex < weeklyOverview.length - 1 ? weeklyOverview[currentIndex + 1] : null;
+
                 const wow =
-                  w.startWt != null && w.endWt != null
-                    ? round1(w.endWt - w.startWt)
+                  w.endWt != null && prevWeek?.endWt != null
+                    ? round1(w.endWt - prevWeek.endWt)
                     : null;
 
                 const total =
