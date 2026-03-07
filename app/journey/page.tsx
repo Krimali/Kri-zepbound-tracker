@@ -216,7 +216,6 @@ export default function JourneyPage() {
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
         <div>
           <div style={{ fontSize: 28, fontWeight: 900 }}>My Journey</div>
-          <div style={{ marginTop: 4, opacity: 0.7 }}>Weekly view (Tue–Mon). Latest week & day shown first.</div>
         </div>
         <div style={{ opacity: 0.75, fontWeight: 700 }}>{status}</div>
       </div>
@@ -225,7 +224,7 @@ export default function JourneyPage() {
 
       <Card
         title="📋 Weekly Overview"
-        subtitle="Tap a week row to expand daily breakdown. Days are newest → oldest (D7…D1)."
+        //subtitle="Tap a week row to expand daily breakdown. Days are newest → oldest (D7…D1)."
       >
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 820 }}>
@@ -349,11 +348,7 @@ function FragmentWeek(props: {
         <tr style={{ borderTop: "1px solid #eee" }}>
           <td colSpan={6} style={{ padding: 12 }}>
             <div style={{ border: "1px solid #eee", borderRadius: 16, background: "white", overflow: "hidden" }}>
-              {/* Day table header (descending) */}
-              <div style={{ padding: "12px 14px", borderBottom: "1px solid #f0f0f0", display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <Pill>Latest day first</Pill>
-                <Pill>Full exercise list</Pill>
-              </div>
+              
 
               <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 860 }}>

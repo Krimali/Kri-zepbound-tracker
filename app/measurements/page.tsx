@@ -213,9 +213,6 @@ export default function MeasurementsPage() {
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: "12px 12px 28px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
         <div style={{ fontSize: 28, fontWeight: 900 }}>Measurements</div>
-        <div style={{ opacity: 0.7, fontSize: 14 }}>
-          Track weekly measurements (cm). Latest shown first.
-        </div>
       </div>
 
       <div style={{ marginBottom: 12, fontWeight: 800 }}>{status}</div>
@@ -310,10 +307,6 @@ export default function MeasurementsPage() {
               />
             </div>
           ))}
-        </div>
-
-        <div style={{ marginTop: 10, opacity: 0.65, fontSize: 12 }}>
-          Pick a date to edit an existing record. After save/delete, the form resets.
         </div>
       </div>
 
