@@ -75,6 +75,11 @@ function formatWhole(n: number | null | undefined) {
   return String(Math.round(n));
 }
 
+function lbsToKgText(n: number | null | undefined) {
+  if (n == null) return "—";
+  return `${round1(n * 0.453592)} kg`;
+}
+
 function signed(n: number | null | undefined) {
   if (n == null) return "—";
   const rounded = round1(n);
@@ -470,6 +475,7 @@ export default function Dashboard() {
             label="Starting"
             value={formatMaybe(startWeight)}
             suffix="lbs"
+            subtext={lbsToKgText(startWeight)}
             bg="#f8f7ff"
             accent="#7c3aed"
           />
@@ -477,6 +483,7 @@ export default function Dashboard() {
             label="Lost"
             value={formatMaybe(totalLost)}
             suffix="lbs"
+            subtext={lbsToKgText(totalLost)}
             bg="#ecfdf5"
             accent="#059669"
           />
@@ -484,6 +491,7 @@ export default function Dashboard() {
             label="Current"
             value={formatMaybe(currentWeight)}
             suffix="lbs"
+            subtext={lbsToKgText(currentWeight)}
             bg="#eef2ff"
             accent="#2563eb"
           />
@@ -491,6 +499,7 @@ export default function Dashboard() {
             label="To Goal"
             value={formatMaybe(toGoal)}
             suffix="lbs"
+            subtext={lbsToKgText(toGoal)}
             bg="#fff7ed"
             accent="#ea580c"
           />
@@ -512,6 +521,9 @@ export default function Dashboard() {
         >
           <div style={{ fontWeight: 800 }}>
             Goal: {formatMaybe(targetWeight)} lbs
+            <div style={{ marginTop: 4, fontSize: 12, opacity: 0.65, fontWeight: 700 }}>
+              {lbsToKgText(targetWeight)}
+            </div>
           </div>
 
           {startWeight != null && targetWeight != null && currentWeight != null ? (
@@ -912,15 +924,18 @@ function BigStat({
   label,
   value,
   suffix,
+  subtext,
   bg,
   accent,
 }: {
   label: string;
   value: any;
   suffix?: string;
+  subtext?: string;
   bg?: string;
   accent?: string;
 }) {
+  
   return (
     <div
       style={{
@@ -936,6 +951,11 @@ function BigStat({
       <div style={{ fontSize: 18, fontWeight: 950, color: accent ?? "#111827" }}>
         {value} <span style={{ fontSize: 12, opacity: 0.7 }}>{suffix}</span>
       </div>
+      {subtext ? (
+        <div style={{ marginTop: 4, fontSize: 12, opacity: 0.65, fontWeight: 700 }}>
+          {subtext}
+        </div>
+      ) : null} 
     </div>
   );
 }
