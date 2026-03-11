@@ -66,10 +66,13 @@ function dayInWeekFromISO(iso: string) {
 }
 
 function weekNumberFromISO(iso: string) {
-  const start = new Date(WEEK1_START + "T00:00:00");
-  const d = new Date(iso + "T00:00:00");
-  const diffMs = d.getTime() - start.getTime();
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  const [startY, startM, startD] = WEEK1_START.split("-").map(Number);
+  const [y, m, d] = iso.split("-").map(Number);
+
+  const startUTC = Date.UTC(startY, startM - 1, startD);
+  const dateUTC = Date.UTC(y, m - 1, d);
+
+  const diffDays = Math.floor((dateUTC - startUTC) / (1000 * 60 * 60 * 24));
   return Math.floor(diffDays / 7) + 1;
 }
 
