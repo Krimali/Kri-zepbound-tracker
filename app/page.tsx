@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import { weekNumberFromISO, dayInWeekFromISO, weekRangeFromWeekNumber } from "@/lib/calendar";
 
 type Entry = {
   id: string;
@@ -186,12 +187,16 @@ export default function Dashboard() {
         const { data: all, error: allErr } = await supabase
           .from("entries")
           .select("*")
-          .order("week_number", { ascending: false })
           .order("entry_date", { ascending: false })
           .limit(500);
         if (allErr) throw allErr;
 
-        const entries = (((all as any) ?? []) as Entry[]);
+        const entries = (((all as any) ?? []) as Entry[]).map((r) => ({
+          ...r,
+          week_number: weekNumberFromISO(r.entry_date),
+          day_in_week: dayInWeekFromISO(r.entry_date),
+        }));
+
         setAllEntries(entries);
 
         const activeWeek =
@@ -211,8 +216,9 @@ export default function Dashboard() {
             );
             const desc = [...asc].reverse();
 
-            const start = asc[0]?.entry_date ?? "";
-            const end = asc[asc.length - 1]?.entry_date ?? "";
+            const fullRange = weekRangeFromWeekNumber(week);
+            const start = fullRange.start;
+            const end = fullRange.end;
             const startWt = asc[0]?.weight ?? null;
             const endWt = asc[asc.length - 1]?.weight ?? null;
 

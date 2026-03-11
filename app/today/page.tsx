@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { weekNumberFromISO, dayInWeekFromISO } from "@/lib/calendar";
 
 type Entry = {
   id: string;

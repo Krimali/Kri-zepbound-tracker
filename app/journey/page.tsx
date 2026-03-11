@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { weekNumberFromISO, dayInWeekFromISO, weekRangeFromWeekNumber } from "@/lib/calendar";
 
 type Entry = {
   id: string;
@@ -103,23 +104,22 @@ export default function JourneyPage() {
         setStatus("Loading...");
 
         // Goals (optional, used for "Total" since starting weight)
-        const { data: g, error: gErr } = await supabase.from("goals").select("*").limit(1).maybeSingle();
-        if (gErr) throw gErr;
-        setGoals((g ?? null) as any);
-
-        // Entries (enough history for journey)
         const { data: eRows, error: eErr } = await supabase
           .from("entries")
           .select(
             "id, entry_date, week_number, day_in_week, weight, steps, calories, protein, mood, dose_mg, is_injection_day, injection_site"
           )
-          .order("week_number", { ascending: false })
           .order("entry_date", { ascending: false })
           .limit(400);
 
         if (eErr) throw eErr;
 
-        const list = ((eRows ?? []) as any as Entry[]).slice();
+        const list = ((eRows ?? []) as any as Entry[]).map((r) => ({
+          ...r,
+          week_number: weekNumberFromISO(r.entry_date),
+          day_in_week: dayInWeekFromISO(r.entry_date),
+        }));
+
         setEntries(list);
 
         // Expand latest week by default
@@ -171,8 +171,9 @@ export default function JourneyPage() {
         const desc = [...weekRows].sort((a, b) => b.entry_date.localeCompare(a.entry_date));
         const asc = [...weekRows].sort((a, b) => a.entry_date.localeCompare(b.entry_date));
 
-        const startDate = asc[0]?.entry_date ?? "";
-        const endDate = asc[asc.length - 1]?.entry_date ?? "";
+        const fullRange = weekRangeFromWeekNumber(week);
+        const startDate = fullRange.start;
+        const endDate = fullRange.end;
 
         const startWt = asc[0]?.weight ?? null;
         const endWt = asc[asc.length - 1]?.weight ?? null;
