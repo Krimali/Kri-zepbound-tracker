@@ -655,7 +655,7 @@ export default function Dashboard() {
             value={formatMaybe(targetWeight)}
             suffix="lbs"
             subtext={lbsToKgText(targetWeight)}
-            bg="#CFE1B9"
+            bg="#aac38a"
             accent="#007730"
           />
           <BigStat
@@ -663,7 +663,7 @@ export default function Dashboard() {
             value={formatMaybe(toGoal)}
             suffix="lbs"
             subtext={lbsToKgText(toGoal)}
-            bg="#bed3a3"
+            bg="#CFE1B9"
             accent="#007730"
           />
           <ProgressStat value={progressPercent} />
