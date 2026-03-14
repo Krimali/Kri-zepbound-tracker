@@ -63,7 +63,7 @@ function toNumOrNull(v: string): number | null {
 function deltaColor(delta: number | null) {
   if (delta == null) return "#6b7280";
   if (delta < 0) return "#047857";
-  if (delta > 0) return "#b45309";
+  if (delta > 0) return "#bf2121";
   return "#6b7280";
 }
 
@@ -381,7 +381,7 @@ export default function MeasurementsPage() {
                         textAlign: "center",
                         padding: "12px 10px",
                         fontSize: 13,
-                        fontWeight: 900,
+                        fontWeight: 700,
                         borderBottom: "1px solid #eef2f7",
                         background: "white",
                         borderLeft: idx === 0 ? "none" : "1px solid #e5e7eb",
@@ -472,7 +472,7 @@ export default function MeasurementsPage() {
                               textAlign: "right",
                               padding: "12px 10px",
                               borderBottom: "1px solid #f3f4f6",
-                              fontWeight: 900,
+                              fontWeight: 500,
                               borderLeft: idx === 0 ? "none" : "1px solid #e5e7eb",
                               whiteSpace: "nowrap",
                             }}
@@ -484,7 +484,7 @@ export default function MeasurementsPage() {
                               textAlign: "right",
                               padding: "12px 10px",
                               borderBottom: "1px solid #f3f4f6",
-                              fontWeight: 900,
+                              fontWeight: 500,
                               color: deltaColor(delta),
                               whiteSpace: "nowrap",
                             }}
@@ -541,7 +541,7 @@ const dangerBtnStyle: React.CSSProperties = {
   padding: "10px 14px",
   borderRadius: 12,
   border: "1px solid #fecaca",
-  color: "#991b1b",
+  color: "#8f1919",
   fontWeight: 900,
   background: "#fff",
 };

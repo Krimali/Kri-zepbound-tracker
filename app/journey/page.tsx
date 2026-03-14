@@ -32,7 +32,7 @@ type Exercise = {
 type GoalRow = {
   id: string;
   start_weight: number | null;
-  target_weight: number | null;
+  goal_weight: number | null;
 };
 
 function fmtDate(iso: string) {
@@ -113,7 +113,16 @@ export default function JourneyPage() {
       try {
         setStatus("Loading...");
 
-        // Goals (optional, used for "Total" since starting weight)
+        // Goals (used for cumulative total weight)
+        const { data: g, error: gErr } = await supabase
+          .from("goals")
+          .select("id, start_weight, goal_weight")
+          .limit(1)
+          .maybeSingle();
+
+        if (gErr) throw gErr;
+        setGoals((g ?? null) as GoalRow | null);
+
         const { data: eRows, error: eErr } = await supabase
           .from("entries")
           .select(
@@ -179,69 +188,96 @@ export default function JourneyPage() {
       return round1(nums.reduce((a, b) => a + b, 0) / nums.length);
     };
 
-    return Array.from(byWeek.entries())
-      .sort((a, b) => b[0] - a[0])
-      .map(([week, weekRows]) => {
-        const desc = [...weekRows].sort((a, b) => b.entry_date.localeCompare(a.entry_date));
-        const asc = [...weekRows].sort((a, b) => a.entry_date.localeCompare(b.entry_date));
+    const orderedWeeks = Array.from(byWeek.entries())
+      .sort((a, b) => b[0] - a[0]);
 
-        const fullRange = weekRangeFromWeekNumber(week);
-        const startDate = fullRange.start;
-        const endDate = fullRange.end;
+    return orderedWeeks.map(([week, weekRows], weekIndex) => {
+      const desc = [...weekRows].sort((a, b) => b.entry_date.localeCompare(a.entry_date));
+      const asc = [...weekRows].sort((a, b) => a.entry_date.localeCompare(b.entry_date));
 
-        const startWt = asc[0]?.weight ?? null;
-        const endWt = asc[asc.length - 1]?.weight ?? null;
+      const fullRange = weekRangeFromWeekNumber(week);
+      const startDate = fullRange.start;
+      const endDate = fullRange.end;
 
-        const dose = desc.find((x) => x.dose_mg != null)?.dose_mg ?? null;
+      const startWt = asc[0]?.weight ?? null;
+      const endWt = asc[asc.length - 1]?.weight ?? null;
 
-        const delta =
-          startWt != null && endWt != null ? round1(endWt - startWt) : null;
+      const dose = desc.find((x) => x.dose_mg != null)?.dose_mg ?? null;
 
-        const startGoalWeight =
-          (goals as any)?.start_weight ??
-          (goals as any)?.startWeight ??
-          null;
+      const totalWeight =
+        goals?.start_weight != null && endWt != null
+          ? round1(endWt - goals.start_weight)
+          : null;
 
-        const totalWeight =
-          startGoalWeight != null && endWt != null
-            ? round1(endWt - startGoalWeight)
-            : null;
+      const avg = (vals: (number | null)[]) => {
+        const nums = vals.filter((v): v is number => v != null);
+        if (!nums.length) return null;
+        return round1(nums.reduce((a, b) => a + b, 0) / nums.length);
+      };
 
-        const avgCalories = avg(asc.map((x) => x.calories));
-        const avgProtein = avg(asc.map((x) => x.protein));
-        const avgCarbs = avg(asc.map((x) => x.carbs));
-        const avgFat = avg(asc.map((x) => x.fat));
-        const avgFiber = avg(asc.map((x) => x.fiber));
+      const avgCalories = avg(asc.map((x) => x.calories));
+      const avgProtein = avg(asc.map((x) => x.protein));
+      const avgCarbs = avg(asc.map((x) => x.carbs));
+      const avgFat = avg(asc.map((x) => x.fat));
+      const avgFiber = avg(asc.map((x) => x.fiber));
 
-        const deltaByDate = new Map<string, number | null>();
-        for (let i = 0; i < asc.length; i++) {
-          const cur = asc[i];
-          const prev = asc[i - 1];
-          if (!prev || cur.weight == null || prev.weight == null) {
-            deltaByDate.set(cur.entry_date, null);
-          } else {
-            deltaByDate.set(cur.entry_date, round1(cur.weight - prev.weight));
-          }
+      // previous week = next item because weeks are sorted DESC
+      const previousWeekRows =
+        weekIndex < orderedWeeks.length - 1 ? orderedWeeks[weekIndex + 1][1] : null;
+
+      const previousWeekAsc = previousWeekRows
+        ? [...previousWeekRows].sort((a, b) => a.entry_date.localeCompare(b.entry_date))
+        : [];
+
+      const previousWeekEndWt =
+        previousWeekAsc.length ? previousWeekAsc[previousWeekAsc.length - 1]?.weight ?? null : null;
+
+      // Weekly delta = compare this week's last weight vs previous week's last weight
+      const delta =
+        endWt != null && previousWeekEndWt != null
+          ? round1(endWt - previousWeekEndWt)
+          : null;
+
+      // Daily deltas should flow across weeks:
+      // D1 compares to previous week's last entered day if available
+      const deltaByDate = new Map<string, number | null>();
+
+      for (let i = 0; i < asc.length; i++) {
+        const cur = asc[i];
+
+        let prevWeight: number | null = null;
+
+        if (i > 0) {
+          prevWeight = asc[i - 1].weight ?? null;
+        } else if (previousWeekAsc.length) {
+          prevWeight = previousWeekAsc[previousWeekAsc.length - 1].weight ?? null;
         }
 
-        return {
-          week,
-          desc,
-          startDate,
-          endDate,
-          dose,
-          startWt,
-          endWt,
-          delta,
-          totalWeight,
-          avgCalories,
-          avgProtein,
-          avgCarbs,
-          avgFat,
-          avgFiber,
-          deltaByDate,
-        };
-      });
+        if (cur.weight == null || prevWeight == null) {
+          deltaByDate.set(cur.entry_date, null);
+        } else {
+          deltaByDate.set(cur.entry_date, round1(cur.weight - prevWeight));
+        }
+      }
+
+      return {
+        week,
+        desc,
+        startDate,
+        endDate,
+        dose,
+        startWt,
+        endWt,
+        delta,
+        totalWeight,
+        avgCalories,
+        avgProtein,
+        avgCarbs,
+        avgFat,
+        avgFiber,
+        deltaByDate,
+      };
+    });
   }, [entries, goals?.start_weight]);
 
   return (
@@ -427,7 +463,7 @@ function FragmentWeek(props: {
               <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 940 }}>
                   <thead>
-                    <tr style={{ textAlign: "left", opacity: 0.7 }}>
+                    <tr style={{ textAlign: "left", opacity: 0.7, background: "#eefafe" }}>
                       <th style={{ padding: "10px 8px" }}>Day</th>
                       <th style={{ padding: "10px 8px" }}>Weight</th>
                       <th style={{ padding: "10px 8px" }}>Weekly Δ</th>
@@ -478,7 +514,7 @@ function FragmentWeek(props: {
                               <ul style={{ margin: 0, paddingLeft: 18 }}>
                                 {ex.map((x) => (
                                   <li key={x.id} style={{ marginBottom: 4 }}>
-                                    <span style={{ fontWeight: 800 }}>{x.exercise_type ?? "Exercise"}</span>
+                                    <span style={{ fontWeight: 500 }}>{x.exercise_type ?? "Exercise"}</span>
                                     {x.minutes != null ? <span style={{ opacity: 0.8 }}> — {x.minutes} min</span> : null}
                                   </li>
                                 ))}

@@ -154,6 +154,8 @@ export default function Dashboard() {
       dose: number | null;
       startWt: number | null;
       endWt: number | null;
+      delta: number | null;
+      deltaByDate: Map<string, number | null>;
       rowsDesc: Entry[];
     }[]
   >([]);
@@ -258,22 +260,74 @@ export default function Dashboard() {
           byWeek.set(r.week_number, [...(byWeek.get(r.week_number) ?? []), r]);
         }
 
-        const overview = Array.from(byWeek.entries())
+        const orderedWeeks = Array.from(byWeek.entries())
           .sort((a, b) => b[0] - a[0])
-          .slice(0, 12)
-          .map(([week, rows]) => {
-            const asc = [...rows].sort((a, b) => a.entry_date.localeCompare(b.entry_date));
-            const desc = [...asc].reverse();
+          .slice(0, 12);
 
-            const fullRange = weekRangeFromWeekNumber(week);
-            const start = fullRange.start;
-            const end = fullRange.end;
-            const startWt = asc[0]?.weight ?? null;
-            const endWt = asc[asc.length - 1]?.weight ?? null;
-            const dose = desc.find((x) => x.dose_mg != null)?.dose_mg ?? null;
+        const overview = orderedWeeks.map(([week, rows], weekIndex) => {
+          const asc = [...rows].sort((a, b) =>
+            a.entry_date.localeCompare(b.entry_date)
+          );
+          const desc = [...asc].reverse();
 
-            return { week, start, end, dose, startWt, endWt, rowsDesc: desc };
-          });
+          const fullRange = weekRangeFromWeekNumber(week);
+          const start = fullRange.start;
+          const end = fullRange.end;
+
+          const startWt = asc[0]?.weight ?? null;
+          const endWt = asc[asc.length - 1]?.weight ?? null;
+
+          const dose = desc.find((x) => x.dose_mg != null)?.dose_mg ?? null;
+
+          const previousWeekRows =
+            weekIndex < orderedWeeks.length - 1 ? orderedWeeks[weekIndex + 1][1] : null;
+
+          const previousWeekAsc = previousWeekRows
+            ? [...previousWeekRows].sort((a, b) => a.entry_date.localeCompare(b.entry_date))
+            : [];
+
+          const previousWeekEndWt =
+            previousWeekAsc.length
+              ? previousWeekAsc[previousWeekAsc.length - 1]?.weight ?? null
+              : null;
+
+          const delta =
+            endWt != null && previousWeekEndWt != null
+              ? round1(endWt - previousWeekEndWt)
+              : null;
+
+          const deltaByDate = new Map<string, number | null>();
+
+          for (let i = 0; i < asc.length; i++) {
+            const cur = asc[i];
+
+            let prevWeight: number | null = null;
+
+            if (i > 0) {
+              prevWeight = asc[i - 1].weight ?? null;
+            } else if (previousWeekAsc.length) {
+              prevWeight = previousWeekAsc[previousWeekAsc.length - 1].weight ?? null;
+            }
+
+            if (cur.weight == null || prevWeight == null) {
+              deltaByDate.set(cur.entry_date, null);
+            } else {
+              deltaByDate.set(cur.entry_date, round1(cur.weight - prevWeight));
+            }
+          }
+
+          return {
+            week,
+            start,
+            end,
+            dose,
+            startWt,
+            endWt,
+            delta,
+            deltaByDate,
+            rowsDesc: desc,
+          };
+        });
 
         setWeeklyOverview(overview);
 
@@ -581,7 +635,7 @@ export default function Dashboard() {
           borderRadius: 20,
           padding: 16,
           color: "white",
-          background: "linear-gradient(90deg, #7c3aed, #db2777)",
+          background: "linear-gradient(60deg, #54438e, #bd83b8)",
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
@@ -641,7 +695,7 @@ export default function Dashboard() {
             label="Lost"
             value={formatMaybe(totalLost)}
             suffix="lbs"
-            subtext={`${lbsToKgText(totalLost)}${lostPercent != null ? ` • ${lostPercent}% body-weight` : ""}`}
+            subtext={`${lbsToKgText(totalLost)}${lostPercent != null ? `   •   ${lostPercent}% body-weight` : ""}`}
             bg="#fff7ed"
             accent="#ea580c"
           />
@@ -690,22 +744,22 @@ export default function Dashboard() {
               label="Waist Start"
               value={formatMaybe(earliestMeasurementWithWaist?.waist)}
               suffix="cm"
-              bg="#fff7ed"
-              accent="#f97316"
+              bg="#fcf6cc"
+              accent="#f91616"
             />
             <BigStat
               label="Waist Latest"
               value={formatMaybe(latestMeasurementWithWaist?.waist)}
               suffix="cm"
-              bg="#fff7ed"
-              accent="#ea580c"
+              bg="#fcf6cc"
+              accent="#f91616"
             />
             <BigStat
               label="Waist Δ"
               value={signed(waistDelta)}
               suffix="cm"
-              bg="#fff7ed"
-              accent={waistDelta != null && waistDelta <= 0 ? "#059669" : "#dc2626"}
+              bg="#fcf6cc"
+              accent={waistDelta != null && waistDelta <= 0 ? "#059669" : "#f91616"}
             />
           </div>
 
@@ -773,8 +827,8 @@ export default function Dashboard() {
           <BigStat label="Calories" value={formatMaybe(weekAvg.calories)} bg="#fdf2f8" accent="#db2777" />
           <BigStat label="Protein" value={formatMaybe(weekAvg.protein)} suffix="g" bg="#ecfdf5" accent="#10b981" />
           <BigStat label="Carbs" value={formatMaybe(weekAvg.carbs)} suffix="g" bg="#eef2ff" accent="#2563eb" />
-          <BigStat label="Fat" value={formatMaybe(weekAvg.fat)} suffix="g" bg="#fef3c7" accent="#d97706" />
-          <BigStat label="Fiber" value={formatMaybe(weekAvg.fiber)} suffix="g" bg="#fff7ed" accent="#f59e0b" />
+          <BigStat label="Fat" value={formatMaybe(weekAvg.fat)} suffix="g" bg="#fdfae7" accent="#d97706" />
+          <BigStat label="Fiber" value={formatMaybe(weekAvg.fiber)} suffix="g" bg="#fff7ed" accent="#cd0c0c" />
         </div>
 
         <div style={{ height: 12 }} />
@@ -820,10 +874,7 @@ export default function Dashboard() {
               {weeklyOverview.map((w) => {
                 const isOpen = expandedWeeks.includes(w.week);
 
-                const wow =
-                  w.startWt != null && w.endWt != null
-                    ? round1(w.endWt - w.startWt)
-                    : null;
+                const wow = w.delta ?? null;
 
                 const total =
                   startWeight != null && w.endWt != null
@@ -892,18 +943,14 @@ export default function Dashboard() {
                             </thead>
                             <tbody>
                               {w.rowsDesc.map((r, idx) => {
-                                const older = idx < w.rowsDesc.length - 1 ? w.rowsDesc[idx + 1] : null;
-                                const delta =
-                                  older?.weight != null && r.weight != null
-                                    ? round1(r.weight - older.weight)
-                                    : null;
+                                const delta = w.deltaByDate?.get(r.entry_date) ?? null;
 
                                 return (
                                   <tr key={r.id} style={{ borderTop: "1px solid #eee" }}>
                                     <td style={{ padding: "10px 8px", fontWeight: 900 }}>
                                       D{r.day_in_week} ({dayShortLabel(r.entry_date)})
                                     </td>
-                                    <td style={{ padding: "10px 8px", fontWeight: 900 }}>
+                                    <td style={{ padding: "10px 8px", fontWeight: 500 }}>
                                       {formatMaybe(r.weight)}
                                     </td>
                                     <td style={{ padding: "10px 8px", fontWeight: 800 }}>
@@ -915,7 +962,7 @@ export default function Dashboard() {
                                               : delta > 0
                                               ? "#dc2626"
                                               : "#059669",
-                                          fontWeight: 700,
+                                          fontWeight: 600,
                                         }}
                                       >
                                         {formatMaybe(delta)}
