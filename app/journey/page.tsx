@@ -13,6 +13,9 @@ type Entry = {
   steps: number | null;
   calories: number | null;
   protein: number | null;
+  carbs: number | null;
+  fat: number | null;
+  fiber: number | null;
   mood: string | null;
   dose_mg: number | null;
   is_injection_day: boolean | null;
@@ -77,7 +80,14 @@ function Pill({ children }: { children: React.ReactNode }) {
 
 function Card({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
-    <div style={{ border: "1px solid #eee", borderRadius: 20, padding: 18, background: "white" }}>
+    <div
+      style={{
+        border: "1px solid #eee",
+        borderRadius: 18,
+        padding: 12,
+        background: "linear-gradient(180deg, #ffffff 0%, #fcfcff 100%)",
+      }}
+    >
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline" }}>
         <div>
           <div style={{ fontSize: 20, fontWeight: 900 }}>{title}</div>
@@ -96,7 +106,7 @@ export default function JourneyPage() {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [exercisesByEntry, setExercisesByEntry] = useState<Record<string, Exercise[]>>({});
 
-  const [expandedWeek, setExpandedWeek] = useState<number | null>(null);
+  const [expandedWeeks, setExpandedWeeks] = useState<number[]>([]);
 
   useEffect(() => {
     async function load() {
@@ -107,7 +117,7 @@ export default function JourneyPage() {
         const { data: eRows, error: eErr } = await supabase
           .from("entries")
           .select(
-            "id, entry_date, week_number, day_in_week, weight, steps, calories, protein, mood, dose_mg, is_injection_day, injection_site"
+            "id, entry_date, week_number, day_in_week, weight, steps, calories, protein, carbs, fat, fiber, mood, dose_mg, is_injection_day, injection_site"
           )
           .order("entry_date", { ascending: false })
           .limit(400);
@@ -124,7 +134,7 @@ export default function JourneyPage() {
 
         // Expand latest week by default
         const latestWeek = list[0]?.week_number ?? null;
-        setExpandedWeek(latestWeek);
+        setExpandedWeeks(latestWeek != null ? [latestWeek] : []);
 
         // Exercises for those entries
         const entryIds = list.map((x) => x.id);
@@ -157,17 +167,21 @@ export default function JourneyPage() {
   }, []);
 
   const weeks = useMemo(() => {
-    // Group by week_number. Entries already newest-first.
     const byWeek = new Map<number, Entry[]>();
+
     for (const e of entries) {
       byWeek.set(e.week_number, [...(byWeek.get(e.week_number) ?? []), e]);
     }
 
-    // Sort weeks desc
+    const avg = (vals: (number | null)[]) => {
+      const nums = vals.filter((v): v is number => v != null);
+      if (!nums.length) return null;
+      return round1(nums.reduce((a, b) => a + b, 0) / nums.length);
+    };
+
     return Array.from(byWeek.entries())
       .sort((a, b) => b[0] - a[0])
       .map(([week, weekRows]) => {
-        // We want days displayed DESC (latest day on top), but we also need an ASC version to compute deltas.
         const desc = [...weekRows].sort((a, b) => b.entry_date.localeCompare(a.entry_date));
         const asc = [...weekRows].sort((a, b) => a.entry_date.localeCompare(b.entry_date));
 
@@ -178,14 +192,27 @@ export default function JourneyPage() {
         const startWt = asc[0]?.weight ?? null;
         const endWt = asc[asc.length - 1]?.weight ?? null;
 
-        const dose = asc.find((x) => x.dose_mg != null)?.dose_mg ?? null;
+        const dose = desc.find((x) => x.dose_mg != null)?.dose_mg ?? null;
 
-        const wow = startWt != null && endWt != null ? round1(endWt - startWt) : null;
-        const total =
-          goals?.start_weight != null && endWt != null ? round1(endWt - goals.start_weight) : null;
+        const delta =
+          startWt != null && endWt != null ? round1(endWt - startWt) : null;
 
-        // Delta per day: compare this day to the previous measurement day (older day in the same week)
-        // We compute in ASC order, then lookup when rendering DESC.
+        const startGoalWeight =
+          (goals as any)?.start_weight ??
+          (goals as any)?.startWeight ??
+          null;
+
+        const totalWeight =
+          startGoalWeight != null && endWt != null
+            ? round1(endWt - startGoalWeight)
+            : null;
+
+        const avgCalories = avg(asc.map((x) => x.calories));
+        const avgProtein = avg(asc.map((x) => x.protein));
+        const avgCarbs = avg(asc.map((x) => x.carbs));
+        const avgFat = avg(asc.map((x) => x.fat));
+        const avgFiber = avg(asc.map((x) => x.fiber));
+
         const deltaByDate = new Map<string, number | null>();
         for (let i = 0; i < asc.length; i++) {
           const cur = asc[i];
@@ -205,15 +232,20 @@ export default function JourneyPage() {
           dose,
           startWt,
           endWt,
-          wow,
-          total,
+          delta,
+          totalWeight,
+          avgCalories,
+          avgProtein,
+          avgCarbs,
+          avgFat,
+          avgFiber,
           deltaByDate,
         };
       });
   }, [entries, goals?.start_weight]);
 
   return (
-    <div style={{ maxWidth: 980, margin: "0 auto", padding: "22px 18px 60px" }}>
+    <div style={{ maxWidth: 1480, margin: "0 auto", padding: "10px 8px 36px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
         <div>
           <div style={{ fontSize: 28, fontWeight: 900 }}>My Journey</div>
@@ -224,42 +256,60 @@ export default function JourneyPage() {
       <div style={{ height: 16 }} />
 
       <Card
-        title="📋 Weekly Overview"
+        title="📋 Detailed Weekly Overview"
         //subtitle="Tap a week row to expand daily breakdown. Days are newest → oldest (D7…D1)."
       >
         <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 820 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 900 }}>
             <thead>
               <tr style={{ textAlign: "left", opacity: 0.7 }}>
                 <th style={{ padding: "10px 8px" }}>Week</th>
                 <th style={{ padding: "10px 8px" }}>Dose</th>
                 <th style={{ padding: "10px 8px" }}>Start</th>
                 <th style={{ padding: "10px 8px" }}>End</th>
-                <th style={{ padding: "10px 8px" }}>WoW</th>
-                <th style={{ padding: "10px 8px" }}>Total</th>
+                <th style={{ padding: "10px 8px" }}>Delta</th>
+                <th style={{ padding: "10px 8px" }}>Total Weight</th>
+                <th style={{ padding: "10px 8px" }}>Calories</th>
+                <th style={{ padding: "10px 8px" }}>Protein</th>
+                <th style={{ padding: "10px 8px" }}>Carbs</th>
+                <th style={{ padding: "10px 8px" }}>Fat</th>
+                <th style={{ padding: "10px 8px" }}>Fiber</th>
               </tr>
             </thead>
 
             <tbody>
               {weeks.map((w) => {
-                const isOpen = expandedWeek === w.week;
+                const isOpen = expandedWeeks.includes(w.week);
 
                 return (
                   <FragmentWeek
                     key={w.week}
                     isOpen={isOpen}
-                    onToggle={() => setExpandedWeek(isOpen ? null : w.week)}
+                    onToggle={() =>
+                      setExpandedWeeks((prev) =>
+                        prev.includes(w.week)
+                          ? prev.filter((x) => x !== w.week)
+                          : [...prev, w.week]
+                      )
+                    }
                     week={w.week}
                     rangeLabel={
                       w.startDate && w.endDate
-                        ? `${fmtDate(w.startDate)} – ${fmtDate(w.endDate)}`
+                        ? `${fmtDate(w.startDate)} – ${fmtDate(w.endDate)}, ${new Date(
+                            w.endDate + "T00:00:00"
+                          ).getFullYear()}`
                         : ""
                     }
                     dose={w.dose}
                     startWt={w.startWt}
                     endWt={w.endWt}
-                    wow={w.wow}
-                    total={w.total}
+                    delta={w.delta}
+                    totalWeight={w.totalWeight}
+                    avgCalories={w.avgCalories}
+                    avgProtein={w.avgProtein}
+                    avgCarbs={w.avgCarbs}
+                    avgFat={w.avgFat}
+                    avgFiber={w.avgFiber}
                     days={w.desc}
                     deltaByDate={w.deltaByDate}
                     exercisesByEntry={exercisesByEntry}
@@ -269,7 +319,7 @@ export default function JourneyPage() {
 
               {!weeks.length ? (
                 <tr>
-                  <td colSpan={6} style={{ padding: 16, opacity: 0.7 }}>
+                  <td colSpan={11} style={{ padding: 16, opacity: 0.7 }}>
                     No entries yet.
                   </td>
                 </tr>
@@ -296,8 +346,13 @@ function FragmentWeek(props: {
   dose: number | null;
   startWt: number | null;
   endWt: number | null;
-  wow: number | null;
-  total: number | null;
+  delta: number | null;
+  totalWeight: number | null;
+  avgCalories: number | null;
+  avgProtein: number | null;
+  avgCarbs: number | null;
+  avgFat: number | null;
+  avgFiber: number | null;
 
   days: Entry[];
   deltaByDate: Map<string, number | null>;
@@ -311,14 +366,19 @@ function FragmentWeek(props: {
     dose,
     startWt,
     endWt,
-    wow,
-    total,
+    delta,
+    totalWeight,
+    avgCalories,
+    avgProtein,
+    avgCarbs,
+    avgFat,
+    avgFiber,
     days,
     deltaByDate,
     exercisesByEntry,
   } = props;
 
-  const wowColor = wow != null && wow > 0 ? "#b45309" : "#047857";
+  const deltaColor = delta != null && delta > 0 ? "#b45309" : "#047857";
 
   return (
     <>
@@ -327,10 +387,10 @@ function FragmentWeek(props: {
         style={{
           borderTop: "1px solid #eee",
           cursor: "pointer",
-          background: isOpen ? "#fafafa" : "transparent",
+          background: isOpen ? "#faf7ff" : "transparent",
         }}
       >
-        <td style={{ padding: "12px 8px", fontWeight: 900 }}>
+        <td style={{ padding: "10px 6px", fontWeight: 900 }}>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
             <span style={{ fontSize: 14 }}>{isOpen ? "▾" : "▸"}</span>
             <span>W{week}</span>
@@ -338,30 +398,46 @@ function FragmentWeek(props: {
           </span>
         </td>
 
-        <td style={{ padding: "12px 8px" }}>{dose != null ? <Pill>💉 {dose}mg</Pill> : <span style={{ opacity: 0.5 }}>—</span>}</td>
-        <td style={{ padding: "12px 8px" }}>{startWt ?? "—"}</td>
-        <td style={{ padding: "12px 8px" }}>{endWt ?? "—"}</td>
-        <td style={{ padding: "12px 8px", fontWeight: 900, color: wowColor }}>{wow ?? "—"}</td>
-        <td style={{ padding: "12px 8px", fontWeight: 900, color: "#047857" }}>{total ?? "—"}</td>
+        <td style={{ padding: "10px 8px" }}>
+          {dose != null ? <Pill>💉 {dose}mg</Pill> : <span style={{ opacity: 0.5 }}>—</span>}
+        </td>
+        <td style={{ padding: "10px 8px" }}>{startWt ?? "—"}</td>
+        <td style={{ padding: "10px 8px" }}>{endWt ?? "—"}</td>
+        <td style={{ padding: "10px 8px", fontWeight: 900, color: deltaColor }}>{delta ?? "—"}</td>
+        <td style={{ padding: "10px 8px", fontWeight: 900, color: "#047857" }}>{totalWeight ?? "—"}</td>
+        <td style={{ padding: "10px 8px" }}>{avgCalories ?? "—"}</td>
+        <td style={{ padding: "10px 8px" }}>{avgProtein != null ? `${avgProtein}g` : "—"}</td>
+        <td style={{ padding: "10px 8px" }}>{avgCarbs != null ? `${avgCarbs}g` : "—"}</td>
+        <td style={{ padding: "10px 8px" }}>{avgFat != null ? `${avgFat}g` : "—"}</td>
+        <td style={{ padding: "10px 8px" }}>{avgFiber != null ? `${avgFiber}g` : "—"}</td>
       </tr>
 
       {isOpen ? (
         <tr style={{ borderTop: "1px solid #eee" }}>
-          <td colSpan={6} style={{ padding: 12 }}>
-            <div style={{ border: "1px solid #eee", borderRadius: 16, background: "white", overflow: "hidden" }}>
-              
+          <td colSpan={11} style={{ padding: 12 }}>
+            <div
+              style={{
+                border: "1px solid #eee",
+                borderRadius: 16,
+                background: "white",
+                overflow: "hidden",
+              }}
+            >
 
               <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 860 }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 940 }}>
                   <thead>
                     <tr style={{ textAlign: "left", opacity: 0.7 }}>
-                      <th style={{ padding: "10px 12px" }}>Day</th>
-                      <th style={{ padding: "10px 12px" }}>Weight</th>
-                      <th style={{ padding: "10px 12px" }}>Δ Weight</th>
-                      <th style={{ padding: "10px 12px" }}>Calories</th>
-                      <th style={{ padding: "10px 12px" }}>Protein</th>
-                      <th style={{ padding: "10px 12px" }}>Steps</th>
-                      <th style={{ padding: "10px 12px" }}>Exercises</th>
+                      <th style={{ padding: "10px 8px" }}>Day</th>
+                      <th style={{ padding: "10px 8px" }}>Weight</th>
+                      <th style={{ padding: "10px 8px" }}>Weekly Δ</th>
+                      <th style={{ padding: "10px 8px" }}>Calories</th>
+                      <th style={{ padding: "10px 8px" }}>Protein</th>
+                      <th style={{ padding: "10px 8px" }}>Carbs</th>
+                      <th style={{ padding: "10px 8px" }}>Fat</th>
+                      <th style={{ padding: "10px 8px" }}>Fiber</th>
+                      <th style={{ padding: "10px 8px" }}>Steps</th>
+                      <th style={{ padding: "10px 8px" }}>Exercise</th>
                     </tr>
                   </thead>
 
@@ -369,38 +445,40 @@ function FragmentWeek(props: {
                     {days.map((d) => {
                       const delta = deltaByDate.get(d.entry_date) ?? null;
                       const ex = exercisesByEntry[d.id] ?? [];
+                      const short = d.entry_date.slice(5).replace("-", "/");
 
                       return (
                         <tr key={d.id} style={{ borderTop: "1px solid #f2f2f2", verticalAlign: "top" }}>
-                          <td style={{ padding: "12px 12px" }}>
-                            <div style={{ fontWeight: 900 }}>D{d.day_in_week}</div>
-                            <div style={{ opacity: 0.7, fontSize: 12 }}>{weekdayName(d.entry_date)}</div>
-                            <div style={{ opacity: 0.7, fontSize: 12 }}>{d.entry_date}</div>
+                          <td style={{ padding: "10px 8px", fontWeight: 900, minWidth: 170 }}>
+                            <div>D{d.day_in_week} ({short})</div>
+
                             {d.is_injection_day ? (
-                              <div style={{ marginTop: 6 }}>
+                              <div style={{ marginTop: 6, display: "flex", gap: 6, flexWrap: "wrap" }}>
                                 <Pill>💉 Injection day</Pill>
+                                {d.injection_site ? <Pill>{d.injection_site}</Pill> : null}
                               </div>
                             ) : null}
                           </td>
 
-                          <td style={{ padding: "12px 12px", fontWeight: 900 }}>{d.weight ?? "—"}</td>
+                          <td style={{ padding: "10px 8px", fontWeight: 900 }}>{d.weight ?? "—"}</td>
 
-                          <td style={{ padding: "12px 12px" }}>
+                          <td style={{ padding: "10px 8px" }}>
                             <Delta value={delta} />
                           </td>
 
-                          <td style={{ padding: "12px 12px" }}>{d.calories ?? "—"}</td>
-                          <td style={{ padding: "12px 12px" }}>{d.protein != null ? `${d.protein}g` : "—"}</td>
-                          <td style={{ padding: "12px 12px" }}>{d.steps ?? "—"}</td>
+                          <td style={{ padding: "10px 8px" }}>{d.calories ?? "—"}</td>
+                          <td style={{ padding: "10px 8px" }}>{d.protein != null ? `${d.protein}g` : "—"}</td>
+                          <td style={{ padding: "10px 8px" }}>{d.carbs != null ? `${d.carbs}g` : "—"}</td>
+                          <td style={{ padding: "10px 8px" }}>{d.fat != null ? `${d.fat}g` : "—"}</td>
+                          <td style={{ padding: "10px 8px" }}>{d.fiber != null ? `${d.fiber}g` : "—"}</td>
+                          <td style={{ padding: "10px 8px" }}>{d.steps ?? "—"}</td>
 
-                          <td style={{ padding: "12px 12px" }}>
+                          <td style={{ padding: "10px 8px", minWidth: 180 }}>
                             {ex.length ? (
                               <ul style={{ margin: 0, paddingLeft: 18 }}>
                                 {ex.map((x) => (
                                   <li key={x.id} style={{ marginBottom: 4 }}>
-                                    <span style={{ fontWeight: 800 }}>
-                                      {x.exercise_type ?? "Exercise"}
-                                    </span>
+                                    <span style={{ fontWeight: 800 }}>{x.exercise_type ?? "Exercise"}</span>
                                     {x.minutes != null ? <span style={{ opacity: 0.8 }}> — {x.minutes} min</span> : null}
                                   </li>
                                 ))}
@@ -415,7 +493,7 @@ function FragmentWeek(props: {
 
                     {!days.length ? (
                       <tr>
-                        <td colSpan={7} style={{ padding: 14, opacity: 0.7 }}>
+                        <td colSpan={10} style={{ padding: 12, opacity: 0.7 }}>
                           No days in this week yet.
                         </td>
                       </tr>
